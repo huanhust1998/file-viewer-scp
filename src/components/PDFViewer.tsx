@@ -30,7 +30,7 @@
  * - react-pdf đồng thời cũng tạo ra một lớp AnnotationLayer để giúp hiển thị và tương tác với các thành phần Links, Highlight ...
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
@@ -225,8 +225,15 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
                 onLoadSuccess={onDocumentLoadSuccess}
                 onLoadError={onDocumentLoadError}
               >
-                <Page pageNumber={currentPage} scale={zoom / 100} />
-                <Page pageNumber={currentPage + 1} scale={zoom / 100} />
+                {Array.from(new Array(numPages), (_, index) => index + 1).map(
+                  (item, index) => (
+                    <Page
+                      pageNumber={item}
+                      scale={zoom / 100}
+                      key={index}
+                    />
+                  )
+                )}
               </Document>
             </div>
           </div>
