@@ -17,12 +17,21 @@
        ↑
       [Main Thread] <─────────── [Text/Canvas Data]
     
-    STEP2: Sử dụng <Document/> và <Page/> trong react-pdf để view file
+    STEP2: Sử dụng <Document/> và <Page/> trong react-pdf để view file, đồng thời cần thêm TextLayer và AnnotationLayer 
 
  */
 
-import { useState } from 'react'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+/**
+ * 1. Tại sao cần phải thêm TextLayer và AnnotationLayer
+ * - Về bản chất thì react-pdf dựa trên thư viện PDF.js để phân tích cú pháp và render các tệp PDF.
+ * - PDF.js đọc tệp PDF và trích xuất tất cả các thành phần cấu thành trang, bao gồm văn bản, hình ảnh đường vẽ ..., cùng thông tin về vị trí và kiểu dáng của chúng
+ * - PDF.js sử dụng API của Canvas HTML5 để vẽ các thành phần này lên <canvas>
+ * - react-pdf tạo ra một lớp văn bản riêng biệt là TextLayer bằng cách sử dụng các phần tử HTML(div, span) => giúp cho người dùng có thể tương tác với PDF.
+ * - react-pdf đồng thời cũng tạo ra một lớp AnnotationLayer để giúp hiển thị và tương tác với các thành phần Links, Highlight ...
+ */
+
+import { useEffect, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
   faSearch,
@@ -30,35 +39,72 @@ import {
   faMagnifyingGlassPlus,
   faMagnifyingGlassMinus,
   faChevronLeft,
-  faChevronRight
-} from '@fortawesome/free-solid-svg-icons'
-import { Document, Page, pdfjs } from 'react-pdf'
+  faChevronRight,
+} from "@fortawesome/free-solid-svg-icons";
+import { Document, Page, pdfjs } from "react-pdf";
+import "react-pdf/dist/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
 
 type PDFViewerProps = {
-  url?: string
-}
+  url?: string;
+};
 
 //Config worker
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
 ).toString();
 
 const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
-  const [isSearching, setIsSearching] = useState(false)
-  const [currentPage, setCurrentPage] = useState('1')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  // const [activeTab, setActiveTab] = useState('contents')
+  const [searchKeyword, setSearchKeyword] = useState<string>("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [numPages, setNumPages] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // const [activeTab, setActiveTab] = useState('contents');
+  const [errorMsg, setErrorMes] = useState<string>();
+  const [inputPage, setInputPage] = useState<number>(1);
+  const [searchResults, setSearchResults] = useState<Array<any>>([]);
+  const [zoom, setZoom] = useState<number>(100);
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setIsSearching(true)
-    // Giả lập delay tìm kiếm
-    setTimeout(() => setIsSearching(false), 1000)
-  }
+  const handleSearch = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      try {
+        setIsSearching(true);
+        const loadingTask = pdfjs.getDocument(url);
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(currentPage);
+        const textContent = await page.getTextContent();
+        // const viewport = page.getViewport({ scale: 1.0 });
+        const textItems = textContent.items.map((item: any) => ({
+          text: item.str,
+          transform: item.transform,
+          width: item.width,
+          height: item.height,
+          // position: {
+          //   left: item.transform[4],
+          //   top: viewport.height - item.transform
+          // }
+        }));
+        const pageText = textItems.map((item) => item.text).join(" ");
+        const regex = new RegExp(searchKeyword, "gi");
+        const allMatches = pageText.match(regex);
+        if (Array.isArray(allMatches)) setSearchResults(allMatches);
+      } catch (error) {
+        console.log({ error });
+      } finally {
+        setIsSearching(false);
+      }
+    }
+  };
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setCurrentPage(numPages.toString())
-  }
+    setNumPages(numPages);
+  };
+
+  const onDocumentLoadError = (error: { message: string }) => {
+    setErrorMes(error.message);
+  };
 
   return (
     <>
@@ -68,6 +114,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
           <button
             className="icon-button"
             onClick={() => setSidebarOpen(!sidebarOpen)}
+            title="menu"
+            type="button"
           >
             <FontAwesomeIcon icon={faBars} />
           </button>
@@ -76,7 +124,14 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
             <input
               type="text"
               placeholder="Search in document..."
-              onChange={handleSearch}
+              value={searchKeyword}
+              disabled={isSearching}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setSearchKeyword(e.target.value);
+              }}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
+                handleSearch(e)
+              }
             />
             <span className="search-icon">
               {isSearching ? (
@@ -86,31 +141,73 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
               )}
             </span>
           </div>
+          {!!searchResults.length && <div>1/{searchResults.length}</div>}
         </div>
 
         <div className="header-right">
           <div className="zoom-controls">
-            <button className="icon-button">
+            <button
+              className="icon-button"
+              type="button"
+              title="faMagnifyingGlassMinus"
+              onClick={() => {
+                if (zoom === 25) return;
+                setZoom((zoom) => zoom - 25);
+              }}
+            >
               <FontAwesomeIcon icon={faMagnifyingGlassMinus} />
             </button>
-            <span>100%</span>
-            <button className="icon-button">
+            <span>{zoom}%</span>
+            <button
+              className="icon-button"
+              type="button"
+              title="faMagnifyingGlassPlus"
+              onClick={() => {
+                if (zoom === 200) return;
+                setZoom((zoom) => zoom + 25);
+              }}
+            >
               <FontAwesomeIcon icon={faMagnifyingGlassPlus} />
             </button>
           </div>
 
           <div className="page-controls">
-            <button className="icon-button">
+            <button
+              className="icon-button"
+              type="button"
+              title="previous-page"
+              onClick={() => {
+                if (currentPage === 1) return;
+                setCurrentPage((currentPage) => currentPage - 1);
+                setInputPage((inputPage) => inputPage - 1);
+              }}
+            >
               <FontAwesomeIcon icon={faChevronLeft} />
             </button>
             <input
               type="text"
-              value={currentPage}
-              onChange={(e) => setCurrentPage(e.target.value)}
+              value={inputPage}
+              onChange={(e) => setInputPage(Number(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (!inputPage) setCurrentPage(1);
+                  else setCurrentPage(inputPage);
+                }
+              }}
               className="page-input"
+              title="page-input"
             />
-            <span>/ 10</span>
-            <button className="icon-button">
+            <span>/ {numPages}</span>
+            <button
+              className="icon-button"
+              type="button"
+              title="next-page"
+              onClick={() => {
+                if (currentPage === numPages) return;
+                setCurrentPage((currentPage) => currentPage + 1);
+                setInputPage((inputPage) => inputPage + 1);
+              }}
+            >
               <FontAwesomeIcon icon={faChevronRight} />
             </button>
           </div>
@@ -120,16 +217,25 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
       {/* Main */}
       <main className="main">
         {/* Content */}
-        <div className="content">
-          <div className="document-view">
-            <Document file={url} onLoadSuccess={onDocumentLoadSuccess}>
-              <Page pageNumber={parseInt(currentPage)} />
-            </Document>
+        {!errorMsg ? (
+          <div className="content">
+            <div className="document-view">
+              <Document
+                file={url}
+                onLoadSuccess={onDocumentLoadSuccess}
+                onLoadError={onDocumentLoadError}
+              >
+                <Page pageNumber={currentPage} scale={zoom / 100} />
+                <Page pageNumber={currentPage + 1} scale={zoom / 100} />
+              </Document>
+            </div>
           </div>
-        </div>
+        ) : (
+          <p>Loading PDF error</p>
+        )}
       </main>
     </>
-  )
-}
+  );
+};
 
-export default PDFViewer
+export default PDFViewer;
