@@ -30,7 +30,7 @@
  * - react-pdf đồng thời cũng tạo ra một lớp AnnotationLayer để giúp hiển thị và tương tác với các thành phần Links, Highlight ...
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
@@ -55,19 +55,37 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
-  const [searchKeyword, setSearchKeyword] = useState<string>("");
-  const [isSearching, setIsSearching] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [numPages, setNumPages] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  // const [activeTab, setActiveTab] = useState('contents');
-  const [errorMsg, setErrorMes] = useState<string>();
-  const [inputPage, setInputPage] = useState<number>(1);
-  const [searchResults, setSearchResults] = useState<Array<any>>([]);
-  const [zoom, setZoom] = useState<number>(100);
+type SearchResult = {
+  pageNumber: number;
+  text: string;
+  index: number;
+  position?: {
+    lef: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+};
 
-  const handleSearch = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
+  const [isOutlineVisible, setIsOutlineVisible] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>();
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
+  const [zoom, setZoom] = useState<number>(100);
+  const [pageInput, setPageInput] = useState<string>("1");
+  const [numPages, setNumPages] = useState<number>(0);
+  const [page, setPage] = useState<number>(1);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const navigateSearchResult = (direction: "next" | "prev") => {};
+
+  const handleSearchKeyDown = async (
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
     if (e.key === "Enter") {
       try {
         setIsSearching(true);
@@ -98,12 +116,22 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
     }
   };
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
-  };
+  const handlePrevPage = () => {};
 
-  const onDocumentLoadError = (error: { message: string }) => {
-    setErrorMes(error.message);
+  const handleNextPage = () => {};
+
+  const handlePageInputChange = () => {};
+
+  const handlePageInputKeyDown = () => {};
+
+  const handlePageInputBlur = () => {};
+
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {};
+
+  const onDocumentLoadError = (error: { message: string }) => {};
+
+  const renderPage = () => {
+    return <></>;
   };
 
   return (
@@ -113,7 +141,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
         <div className="header-left">
           <button
             className="icon-button"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            onClick={() => setIsOutlineVisible(!isOutlineVisible)}
             title="menu"
             type="button"
           >
@@ -124,14 +152,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
             <input
               type="text"
               placeholder="Search in document..."
-              value={searchKeyword}
+              value={searchQuery}
               disabled={isSearching}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setSearchKeyword(e.target.value);
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
               }}
-              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
-                handleSearch(e)
-              }
+              onKeyDown={handleSearchKeyDown}
             />
             <span className="search-icon">
               {isSearching ? (
@@ -141,34 +167,46 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
               )}
             </span>
           </div>
-          {!!searchResults.length && <div>1/{searchResults.length}</div>}
+          {searchResults.length > 0 && (
+            <div className="search-result">
+              <span>
+                {currentSearchIndex + 1}/{searchResults.length}
+              </span>
+              <div className="page-controls">
+                <button
+                  className="icon-button"
+                  type="button"
+                  title="previous-result"
+                  onClick={() => navigateSearchResult("prev")}
+                  disabled={currentSearchIndex <= 1}
+                >
+                  <FontAwesomeIcon icon={faChevronLeft} />
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  title="next-page"
+                  onClick={() => navigateSearchResult("next")}
+                  disabled={currentSearchIndex >= Number(searchQuery?.length)}
+                >
+                  <FontAwesomeIcon icon={faChevronRight} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="header-right">
           <div className="zoom-controls">
-            <button
-              className="icon-button"
-              type="button"
-              title="faMagnifyingGlassMinus"
-              onClick={() => {
-                if (zoom === 25) return;
-                setZoom((zoom) => zoom - 25);
-              }}
-            >
-              <FontAwesomeIcon icon={faMagnifyingGlassMinus} />
-            </button>
             <span>{zoom}%</span>
-            <button
-              className="icon-button"
-              type="button"
-              title="faMagnifyingGlassPlus"
-              onClick={() => {
-                if (zoom === 200) return;
-                setZoom((zoom) => zoom + 25);
-              }}
-            >
-              <FontAwesomeIcon icon={faMagnifyingGlassPlus} />
-            </button>
+            <input
+              type="range"
+              min={25}
+              max={200}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              title="range-zoom"
+            />
           </div>
 
           <div className="page-controls">
@@ -176,24 +214,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
               className="icon-button"
               type="button"
               title="previous-page"
-              onClick={() => {
-                if (currentPage === 1) return;
-                setCurrentPage((currentPage) => currentPage - 1);
-                setInputPage((inputPage) => inputPage - 1);
-              }}
+              onClick={handlePrevPage}
+              disabled={page <= 1}
             >
               <FontAwesomeIcon icon={faChevronLeft} />
             </button>
             <input
               type="text"
-              value={inputPage}
-              onChange={(e) => setInputPage(Number(e.target.value))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  if (!inputPage) setCurrentPage(1);
-                  else setCurrentPage(inputPage);
-                }
-              }}
+              value={pageInput}
+              onChange={handlePageInputChange}
+              onKeyDown={handlePageInputKeyDown}
+              onBlur={handlePageInputBlur}
               className="page-input"
               title="page-input"
             />
@@ -202,11 +233,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
               className="icon-button"
               type="button"
               title="next-page"
-              onClick={() => {
-                if (currentPage === numPages) return;
-                setCurrentPage((currentPage) => currentPage + 1);
-                setInputPage((inputPage) => inputPage + 1);
-              }}
+              onClick={handleNextPage}
+              disabled={page >= numPages}
             >
               <FontAwesomeIcon icon={faChevronRight} />
             </button>
@@ -215,32 +243,37 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url }) => {
       </header>
 
       {/* Main */}
-      <main className="main">
-        {/* Content */}
-        {!errorMsg ? (
-          <div className="content">
-            <div className="document-view">
-              <Document
-                file={url}
-                onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={onDocumentLoadError}
-              >
-                {Array.from(new Array(numPages), (_, index) => index + 1).map(
-                  (item, index) => (
-                    <Page
-                      pageNumber={item}
-                      scale={zoom / 100}
-                      key={index}
-                    />
-                  )
-                )}
-              </Document>
+      {url ? (
+        <div className="main" ref={containerRef}>
+          {loading && !error && <div>Loading ...</div>}
+          {error && (
+            <div>
+              <div>Lối tải tài liệu</div>
+              <div>{error}</div>
             </div>
-          </div>
-        ) : (
-          <p>Loading PDF error</p>
-        )}
-      </main>
+          )}
+          {!error && (
+            <Document
+              file={url}
+              onLoadSuccess={onDocumentLoadSuccess}
+              onLoadError={onDocumentLoadError}
+              loading={<div>Đang tải trang</div>}
+            >
+              {numPages > 0 && (
+                <div>
+                  {Array.from(new Array(numPages), (_, index) => index + 1).map(
+                    renderPage
+                  )}
+                </div>
+              )}
+            </Document>
+          )}
+        </div>
+      ) : (
+        <div>
+          <div>Không có tài liệu</div>
+        </div>
+      )}
     </>
   );
 };

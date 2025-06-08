@@ -323,3 +323,8 @@ body {
     padding: 0 16px;
   }
 }
+
+.search-result {
+  display: flex;
+  gap: 4px
+}
